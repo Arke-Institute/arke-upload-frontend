@@ -1,0 +1,28 @@
+{
+  // Cloudflare Worker configuration for Arke Upload Frontend
+  "name": "arke-upload-frontend",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Worker settings
+  "workers_dev": true,
+
+  // Environment variables (optional)
+  "vars": {
+    "UPLOAD_API_URL": "https://upload.arke.institute",
+    "ARKE_INSTITUTE_URL": "https://arke.institute"
+  },
+
+  // Service bindings
+  "services": [
+    {
+      "binding": "ORCHESTRATOR",
+      "service": "arke-orchestrator"
+    },
+    {
+      "binding": "INGEST",
+      "service": "arke-ingest-worker"
+    }
+  ]
+}
