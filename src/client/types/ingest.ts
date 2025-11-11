@@ -4,6 +4,7 @@
 
 export type IngestBatchStatus =
   | 'uploading'
+  | 'preprocessing'  // Files being processed by Cloud Run (TIFF conversion, PDF splitting)
   | 'enqueued'
   | 'processing'
   | 'completed'

@@ -1,7 +1,6 @@
 /**
  * Progress Calculation Logic
  */
-import type { StatusResponse, ProcessingPhase } from '../types/upload';
 import type { OrchestratorStatusResponse, OrchestratorStatus } from '../types/orchestrator';
 
 export interface UnifiedProgress {
@@ -12,46 +11,23 @@ export interface UnifiedProgress {
 
 /**
  * Calculate unified progress across upload and orchestrator phases
+ * SDK handles upload progress (0-25%), we only need orchestrator calculation
  */
 export class ProgressCalculator {
   /**
-   * Calculate progress for upload server phase (0-25%)
-   */
-  calculateUploadProgress(status: StatusResponse): UnifiedProgress {
-    const phaseMap: Record<ProcessingPhase, { base: number; description: string }> = {
-      scanning: { base: 5, description: 'Scanning files' },
-      preprocessing: { base: 10, description: 'Preprocessing images' },
-      uploading: { base: 15, description: 'Uploading to storage' },
-      finalizing: { base: 25, description: 'Finalizing upload' },
-    };
-
-    const phase = status.phase || 'scanning';
-    const phaseInfo = phaseMap[phase];
-    const uploadProgress = status.progress;
-
-    // Use server-provided percentage if available, otherwise use base
-    let percentage = phaseInfo.base;
-    if (uploadProgress?.percentComplete) {
-      // Map server percentage (0-100) to upload phase range (0-25)
-      percentage = (uploadProgress.percentComplete / 100) * 25;
-    }
-
-    return {
-      percentage,
-      phase,
-      description: phaseInfo.description,
-    };
-  }
-
-  /**
-   * Calculate progress for orchestrator phase (30-100%)
-   * Adjusted to account for ingest queue phase (25-26%) and orchestrator queue (28%)
+   * Calculate progress for orchestrator phase (28-100%)
+   * Adjusted ranges:
+   * - Discovery (28-35%)
+   * - OCR (35-60%)
+   * - PINAX (60-80%)
+   * - Descriptions (80-95%)
+   * - Done (100%)
    */
   calculateOrchestratorProgress(status: OrchestratorStatusResponse): UnifiedProgress {
     const phaseMap: Record<OrchestratorStatus, { base: number; range: number; description: string }> = {
-      INGESTED: { base: 30, range: 10, description: 'Discovering files' },
-      OCR_IN_PROGRESS: { base: 40, range: 25, description: 'Processing OCR' },
-      PINAX_EXTRACTION: { base: 65, range: 15, description: 'Extracting metadata' },
+      INGESTED: { base: 28, range: 7, description: 'Discovering files' },
+      OCR_IN_PROGRESS: { base: 35, range: 25, description: 'Processing OCR' },
+      PINAX_EXTRACTION: { base: 60, range: 20, description: 'Extracting metadata' },
       DESCRIPTION: { base: 80, range: 15, description: 'Generating descriptions' },
       DONE: { base: 100, range: 0, description: 'Complete' },
       ERROR: { base: 0, range: 0, description: 'Error occurred' },

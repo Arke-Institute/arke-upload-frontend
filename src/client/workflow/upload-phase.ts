@@ -1,52 +1,76 @@
 /**
- * Upload Server Phase
+ * Upload Phase using @arke/upload-client SDK
+ * Uploads files directly to R2 with parallel uploads and progress tracking
  */
-import { UploadClient } from '../api/upload-client';
 import type { ProgressManager } from '../ui/progress-manager';
-import type { InitSessionRequest } from '../types/upload';
+
+// SDK types for browser
+interface UploadProgress {
+  phase: 'scanning' | 'uploading' | 'finalizing' | 'complete';
+  filesTotal: number;
+  filesUploaded: number;
+  bytesTotal: number;
+  bytesUploaded: number;
+  currentFile?: string;
+  percentComplete: number;
+}
+
+// SDK is loaded globally via script tag (UMD bundle)
+declare const ArkeUploadClient: {
+  ArkeUploader: new (config: any) => {
+    uploadBatch: (files: File[], options: { onProgress: (p: UploadProgress) => void }) => Promise<{ batchId: string; filesUploaded: number; bytesUploaded: number }>;
+  };
+};
+
+export interface UploadConfig {
+  workerUrl: string;
+  uploader: string;
+  rootPath: string;
+  parentPi?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export class UploadPhase {
-  private client = new UploadClient();
-
   async execute(
-    request: InitSessionRequest,
+    config: UploadConfig,
     files: FileList,
     progressManager: ProgressManager
   ): Promise<{ batchId: string }> {
-    console.log('[UploadPhase] Starting upload phase');
+    console.log('[UploadPhase] Starting upload phase with SDK');
+    console.log('[UploadPhase] Config:', config);
+    console.log('[UploadPhase] Files:', files.length);
 
-    // Step 1: Initialize session
-    console.log('[UploadPhase] Step 1: Initializing session');
-    const { sessionId, uploadUrl } = await this.client.initSession(request);
-    console.log('[UploadPhase] Session initialized:', sessionId);
-
-    progressManager.startProgress(sessionId);
-
-    // Step 2: Upload files
-    console.log('[UploadPhase] Step 2: Uploading files to', uploadUrl);
-    await this.client.uploadFiles(uploadUrl, files);
-    console.log('[UploadPhase] Files uploaded');
-
-    // Step 3: Trigger processing
-    console.log('[UploadPhase] Step 3: Triggering processing');
-    await this.client.triggerProcessing(sessionId);
-    console.log('[UploadPhase] Processing triggered');
-
-    // Step 4: Poll until upload complete
-    console.log('[UploadPhase] Step 4: Polling for completion');
-    const finalStatus = await this.client.pollUntilComplete(sessionId, (status) => {
-      console.log('[UploadPhase] Status update:', status.status, status.phase, `${status.progress?.percentComplete || 0}%`);
-      progressManager.updateUploadProgress(status);
+    const { ArkeUploader } = ArkeUploadClient;
+    const uploader = new ArkeUploader({
+      workerUrl: config.workerUrl,
+      uploader: config.uploader,
+      rootPath: config.rootPath,
+      parentPi: config.parentPi,
+      metadata: config.metadata,
+      processing: {
+        ocr: true,
+        describe: true,
+        pinax: true,
+      },
+      parallelUploads: 5, // Upload 5 files concurrently for better performance
     });
-    console.log('[UploadPhase] Upload complete. Final status:', finalStatus);
 
-    // Extract batchId from final status
-    if (!finalStatus.batchId) {
-      console.error('[UploadPhase] ERROR: No batchId in final status:', finalStatus);
-      throw new Error('Upload completed but no batchId received');
-    }
+    console.log('[UploadPhase] ArkeUploader created, starting batch upload');
 
-    console.log('[UploadPhase] BatchId extracted:', finalStatus.batchId);
-    return { batchId: finalStatus.batchId };
+    const result = await uploader.uploadBatch(Array.from(files), {
+      onProgress: (progress: UploadProgress) => {
+        console.log(
+          `[UploadPhase] Progress: ${progress.phase} - ${progress.percentComplete}% ` +
+          `(${progress.filesUploaded}/${progress.filesTotal} files, ` +
+          `${Math.round(progress.bytesUploaded / 1024 / 1024)}MB/${Math.round(progress.bytesTotal / 1024 / 1024)}MB)`
+        );
+        progressManager.updateSDKProgress(progress);
+      },
+    });
+
+    console.log('[UploadPhase] Upload complete. Result:', result);
+    console.log('[UploadPhase] BatchId:', result.batchId);
+
+    return { batchId: result.batchId };
   }
 }

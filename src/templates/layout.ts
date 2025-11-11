@@ -6,8 +6,9 @@ import { renderUploadForm } from './components/upload-form';
 import { renderProgressDisplay } from './components/progress-display';
 import { renderSuccessDisplay } from './components/success-display';
 import type { Env } from '../types/env';
+import { sdkBundle, clientBundle } from '../client-bundle';
 
-export function renderLayout(env: Env, clientJS: string): string {
+export function renderLayout(env: Env): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,13 +35,16 @@ export function renderLayout(env: Env, clientJS: string): string {
   <!-- Configuration -->
   <script>
     window.CONFIG = {
-      uploadApiUrl: '${env.UPLOAD_API_URL}',
+      ingestWorkerUrl: '${env.INGEST_WORKER_URL}',
       arkeInstituteUrl: '${env.ARKE_INSTITUTE_URL}'
     };
   </script>
 
+  <!-- Upload SDK (UMD bundle - creates global ArkeUploadClient) -->
+  <script>${sdkBundle}</script>
+
   <!-- Client Bundle -->
-  <script>${clientJS}</script>
+  <script>${clientBundle}</script>
 </body>
 </html>`;
 }

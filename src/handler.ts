@@ -4,9 +4,7 @@
 import { renderLayout } from './templates/layout';
 import { handleOrchestratorAPI, handleTestOrchestrator } from './api/orchestrator';
 import { handleIngestAPI, handleTestIngest } from './api/ingest';
-import { handleUploadProxy } from './api/upload-proxy';
 import type { Env } from './types/env';
-import clientJSContent from './client-bundle';
 
 export async function handleRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -40,14 +38,11 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     return handleOrchestratorAPI(request, env);
   }
 
-  // Upload proxy routes
-  if (url.pathname.startsWith('/api/upload')) {
-    return handleUploadProxy(request, env);
-  }
+  // Upload proxy routes removed - SDK uploads directly to R2
 
   // Serve HTML
   if (request.method === 'GET') {
-    const html = renderLayout(env, clientJSContent);
+    const html = renderLayout(env);
 
     return new Response(html, {
       headers: {

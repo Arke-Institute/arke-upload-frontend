@@ -2,7 +2,7 @@
  * Client-side configuration injected from worker
  */
 export interface ClientConfig {
-  uploadApiUrl: string;
+  ingestWorkerUrl: string;
   arkeInstituteUrl: string;
 }
 

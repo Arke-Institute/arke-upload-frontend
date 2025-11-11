@@ -3,59 +3,100 @@
  */
 import { setText, show, hide, setStyle } from './dom-utils';
 import { ProgressCalculator } from './progress-calculator';
-import type { StatusResponse } from '../types/upload';
 import type { OrchestratorStatusResponse } from '../types/orchestrator';
+import type { IngestBatchStatusResponse } from '../types/ingest';
+
+// SDK types for browser
+interface UploadProgress {
+  phase: 'scanning' | 'uploading' | 'finalizing' | 'complete';
+  filesTotal: number;
+  filesUploaded: number;
+  bytesTotal: number;
+  bytesUploaded: number;
+  currentFile?: string;
+  percentComplete: number;
+}
 
 export class ProgressManager {
   private calculator = new ProgressCalculator();
   public rootPiLinkShown = false;
+  private sessionStarted = false;
 
   /**
-   * Show progress display and hide form
+   * Show progress display and hide form (if not already shown)
    */
-  startProgress(sessionId: string): void {
-    console.log('[ProgressManager] Starting progress display for session:', sessionId);
-    hide('uploadForm');
-    show('progressDisplay');
-    setText('sessionId', sessionId);
-    console.log('[ProgressManager] Progress display shown');
-  }
-
-  /**
-   * Update progress from upload server status
-   */
-  updateUploadProgress(status: StatusResponse): void {
-    console.log('[ProgressManager] Updating upload progress:', status);
-    const progress = this.calculator.calculateUploadProgress(status);
-    console.log('[ProgressManager] Calculated progress:', progress);
-
-    setText('status', status.status);
-    setText('phase', progress.description);
-    setText('percentage', `${Math.round(progress.percentage)}%`);
-    setStyle('progressBar', 'width', `${progress.percentage}%`);
-
-    if (status.progress) {
-      setText('filesProcessed', status.progress.filesProcessed.toString());
-      setText('filesTotal', status.progress.filesTotal.toString());
-      setText('currentFile', status.progress.currentFile || '-');
+  startProgress(): void {
+    if (!this.sessionStarted) {
+      console.log('[ProgressManager] Starting progress display');
+      hide('uploadForm');
+      show('progressDisplay');
+      this.sessionStarted = true;
+      console.log('[ProgressManager] Progress display shown');
     }
   }
 
   /**
-   * Show ingest queue phase (25-26%)
+   * Update progress from SDK (0-20%)
    */
-  showIngestQueue(batchId: string): void {
-    console.log('[ProgressManager] Showing ingest queue phase for batch:', batchId);
+  updateSDKProgress(progress: UploadProgress): void {
+    // Ensure progress display is visible
+    this.startProgress();
 
-    setText('status', 'Preparing batch');
-    setText('phase', 'Adding to processing queue...');
+    console.log('[ProgressManager] Updating SDK progress:', progress);
+
+    const phaseMap: Record<string, { base: number; range: number; description: string }> = {
+      scanning: { base: 0, range: 5, description: 'Scanning files and computing CIDs' },
+      uploading: { base: 5, range: 15, description: 'Uploading files to storage' },
+      finalizing: { base: 20, range: 5, description: 'Finalizing upload' },
+      complete: { base: 25, range: 0, description: 'Upload complete' },
+    };
+
+    const phaseInfo = phaseMap[progress.phase] || phaseMap.scanning;
+    const percentage = phaseInfo.base + (progress.percentComplete / 100) * phaseInfo.range;
+
+    setText('status', progress.phase);
+    setText('phase', phaseInfo.description);
+    setText('percentage', `${Math.round(percentage)}%`);
+    setStyle('progressBar', 'width', `${percentage}%`);
+
+    // Show file-by-file progress
+    setText('filesProcessed', progress.filesUploaded.toString());
+    setText('filesTotal', progress.filesTotal.toString());
+    setText('currentFile', progress.currentFile || '-');
+  }
+
+  /**
+   * Show preprocessing phase (20-25%)
+   */
+  showPreprocessing(status: IngestBatchStatusResponse): void {
+    console.log('[ProgressManager] Showing preprocessing phase');
+
+    setText('status', 'Preprocessing');
+    setText('phase', 'Converting TIFFs and splitting PDFs...');
+    setText('percentage', '22%');
+    setStyle('progressBar', 'width', '22%');
+
+    // Show file count (may have changed due to PDF splits!)
+    setText('filesProcessed', status.files_uploaded.toString());
+    setText('filesTotal', status.file_count.toString());
+    setText('currentFile', 'Processing files on server...');
+  }
+
+  /**
+   * Show enqueued phase (25-28%)
+   */
+  showEnqueued(status: IngestBatchStatusResponse): void {
+    console.log('[ProgressManager] Showing enqueued phase');
+
+    setText('status', 'Enqueued');
+    setText('phase', 'Batch ready for orchestrator...');
     setText('percentage', '26%');
     setStyle('progressBar', 'width', '26%');
 
-    // Update file counters to show waiting state
-    setText('filesProcessed', '-');
-    setText('filesTotal', '-');
-    setText('currentFile', 'Finalizing batch upload...');
+    // Show final file count after preprocessing
+    setText('filesProcessed', status.files_uploaded.toString());
+    setText('filesTotal', status.files_uploaded.toString());
+    setText('currentFile', 'Ready for processing');
   }
 
   /**

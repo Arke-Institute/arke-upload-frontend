@@ -13,14 +13,22 @@
     "deploy": "npm run build && wrangler deploy",
     "tail": "wrangler tail"
   },
-  "keywords": ["cloudflare", "worker", "upload", "arke"],
+  "keywords": [
+    "cloudflare",
+    "worker",
+    "upload",
+    "arke"
+  ],
   "author": "Arke Institute",
   "license": "MIT",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
-    "wrangler": "^3.84.1",
-    "typescript": "^5.7.2",
+    "concurrently": "^9.1.0",
     "esbuild": "^0.24.0",
-    "concurrently": "^9.1.0"
+    "typescript": "^5.7.2",
+    "wrangler": "^3.84.1"
+  },
+  "dependencies": {
+    "@arke/upload-client": "github:Arke-Institute/upload-client"
   }
 }

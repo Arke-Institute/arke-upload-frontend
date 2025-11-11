@@ -10,7 +10,7 @@
 
   // Environment variables (optional)
   "vars": {
-    "UPLOAD_API_URL": "https://upload.arke.institute",
+    "INGEST_WORKER_URL": "https://ingest.arke.institute",
     "ARKE_INSTITUTE_URL": "https://arke.institute"
   },
 
@@ -23,6 +23,13 @@
     {
       "binding": "INGEST",
       "service": "arke-ingest-worker"
+    }
+  ],
+
+  "routes": [
+    {
+      "pattern": "upload.arke.institute",
+      "custom_domain": true
     }
   ]
 }

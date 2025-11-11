@@ -1,9 +1,8 @@
 /**
  * Client-side entry point
  */
-import { UploadWorkflow } from './workflow/upload-workflow';
+import { UploadWorkflow, type WorkflowConfig } from './workflow/upload-workflow';
 import { getElement } from './ui/dom-utils';
-import type { InitSessionRequest } from './types/upload';
 
 // Import types
 import './types/config';
@@ -50,25 +49,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Build request with minimal config to use server defaults
-    const request: InitSessionRequest = {
+    // Build workflow config
+    const config: WorkflowConfig = {
       uploader,
       rootPath: parentPi ? '/' : `/${institution}`, // Use institution as root path if no parent
       parentPi: parentPi || undefined, // Only include if provided
       metadata: {
         institution,
       },
-      processing: {
-        ocr: true,      // ← Was true (you got OCR)
-        describe: true, // ← Was false (no description)
-        pinax: true,    // ← Was true (you got PINAX)
-      }
-      
-      // Omit processing and preprocessor to use server defaults
-      // Server defaults: ocr=true, describe=true, pinax=true, tiffMode='convert'
     };
 
-    // Start workflow
-    await workflow.start(request, files);
+    // Start workflow with new SDK-based upload
+    await workflow.start(config, files);
   });
 });

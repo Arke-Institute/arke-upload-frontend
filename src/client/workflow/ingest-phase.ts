@@ -1,5 +1,6 @@
 /**
  * Ingest Worker Queue Phase
+ * Handles: uploading → preprocessing → enqueued
  */
 import { IngestClient } from '../api/ingest-client';
 import type { ProgressManager } from '../ui/progress-manager';
@@ -15,22 +16,40 @@ export class IngestPhase {
   }
 
   async execute(progressManager: ProgressManager): Promise<void> {
-    console.log('[IngestPhase] Starting ingest queue check for batch:', this.batchId);
+    console.log('[IngestPhase] Starting ingest phase for batch:', this.batchId);
 
-    // Show ingest queue state
-    progressManager.showIngestQueue(this.batchId);
+    // Poll until batch is enqueued (may go through preprocessing)
+    while (true) {
+      const status = await this.client.getStatus();
 
-    // Wait for batch to be enqueued (up to 30 seconds)
-    console.log('[IngestPhase] Waiting for batch to be enqueued...');
-    const status = await this.client.waitForEnqueued();
+      console.log('[IngestPhase] Status:', status.status);
+      console.log('[IngestPhase] Files:', status.files_uploaded, '/', status.file_count);
 
-    console.log('[IngestPhase] Batch status:', status.status);
-    console.log('[IngestPhase] Files uploaded:', status.files_uploaded, '/', status.file_count);
+      // Handle preprocessing phase (TIFF conversion, PDF splitting)
+      if (status.status === 'preprocessing') {
+        console.log('[IngestPhase] Batch is being preprocessed');
+        progressManager.showPreprocessing(status);
+      }
 
-    if (status.status === 'failed') {
-      throw new Error('Batch failed during ingest');
+      // Exit when enqueued (ready for orchestrator)
+      if (status.status === 'enqueued') {
+        console.log('[IngestPhase] Batch enqueued successfully');
+        progressManager.showEnqueued(status);
+        return;
+      }
+
+      // Also exit if already processing or completed
+      if (status.status === 'processing' || status.status === 'completed') {
+        console.log('[IngestPhase] Batch already in later stage:', status.status);
+        return;
+      }
+
+      if (status.status === 'failed') {
+        throw new Error('Batch failed during ingest/preprocessing');
+      }
+
+      // Still uploading, wait and retry
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
-
-    console.log('[IngestPhase] Ingest phase complete, batch is ready for orchestrator');
   }
 }
