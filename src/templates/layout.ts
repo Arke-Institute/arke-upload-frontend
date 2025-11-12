@@ -35,8 +35,9 @@ export function renderLayout(env: Env): string {
   <!-- Configuration -->
   <script>
     window.CONFIG = {
-      ingestWorkerUrl: '${env.INGEST_WORKER_URL}',
-      arkeInstituteUrl: '${env.ARKE_INSTITUTE_URL}'
+      ingestWorkerUrl: '${env.UPLOAD_API_URL}',
+      arkeInstituteUrl: '${env.ARKE_INSTITUTE_URL}',
+      statusApiUrl: '/api/status'  // Local proxy to STATUS service binding
     };
   </script>
 

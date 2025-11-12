@@ -1,12 +1,10 @@
 /**
  * Progress UI Manager
  */
-import { setText, show, hide, setStyle } from './dom-utils';
-import { ProgressCalculator } from './progress-calculator';
-import type { OrchestratorStatusResponse } from '../types/orchestrator';
-import type { IngestBatchStatusResponse } from '../types/ingest';
+import { setText, show, hide } from './dom-utils';
+import type { StatusResponse } from '../api/status-client';
 
-// SDK types for browser
+// SDK types for browser (Phase 1 only)
 interface UploadProgress {
   phase: 'scanning' | 'uploading' | 'finalizing' | 'complete';
   filesTotal: number;
@@ -17,233 +15,211 @@ interface UploadProgress {
   percentComplete: number;
 }
 
-export class ProgressManager {
-  private calculator = new ProgressCalculator();
-  public rootPiLinkShown = false;
-  private sessionStarted = false;
+// Stage names for display
+const STAGE_NAMES: Record<string, string> = {
+  ingest: 'Upload',
+  queue_preprocessing: 'Queued for Preprocessing',
+  preprocessing: 'Preprocessing',
+  queue_orchestrator: 'Queued for Processing',
+  orchestrator: 'Processing',
+  completed: 'Complete',
+  error: 'Error',
+};
 
-  /**
-   * Show progress display and hide form (if not already shown)
-   */
+// Stage numbers (1-7 per spec)
+const STAGE_NUMBERS: Record<string, number> = {
+  ingest: 1,
+  queue_preprocessing: 2,
+  preprocessing: 3,
+  queue_orchestrator: 4,
+  orchestrator: 5,
+  completed: 7,
+  error: 7,
+};
+
+export class ProgressManager {
+  private sessionStarted = false;
+  private rootPiLinkShown = false;
+  private batchId?: string;
+
   startProgress(): void {
     if (!this.sessionStarted) {
-      console.log('[ProgressManager] Starting progress display');
       hide('uploadForm');
       show('progressDisplay');
       this.sessionStarted = true;
-      console.log('[ProgressManager] Progress display shown');
     }
   }
 
   /**
-   * Update progress from SDK (0-20%)
+   * Show "resuming" state when loading from URL
+   */
+  showResuming(batchId: string): void {
+    this.startProgress();
+    this.batchId = batchId;
+
+    setText('stageName', 'Resuming');
+    setText('stageNumber', 'Batch ' + batchId.substring(0, 8) + '...');
+    setText('phase', 'Checking status...');
+    setText('filesInfo', '');
+  }
+
+  /**
+   * Update from SDK (Phase 1: Upload)
    */
   updateSDKProgress(progress: UploadProgress): void {
-    // Ensure progress display is visible
     this.startProgress();
 
-    console.log('[ProgressManager] Updating SDK progress:', progress);
-
-    const phaseMap: Record<string, { base: number; range: number; description: string }> = {
-      scanning: { base: 0, range: 5, description: 'Scanning files and computing CIDs' },
-      uploading: { base: 5, range: 15, description: 'Uploading files to storage' },
-      finalizing: { base: 20, range: 5, description: 'Finalizing upload' },
-      complete: { base: 25, range: 0, description: 'Upload complete' },
-    };
-
-    const phaseInfo = phaseMap[progress.phase] || phaseMap.scanning;
-    const percentage = phaseInfo.base + (progress.percentComplete / 100) * phaseInfo.range;
-
-    setText('status', progress.phase);
-    setText('phase', phaseInfo.description);
-    setText('percentage', `${Math.round(percentage)}%`);
-    setStyle('progressBar', 'width', `${percentage}%`);
-
-    // Show file-by-file progress
-    setText('filesProcessed', progress.filesUploaded.toString());
-    setText('filesTotal', progress.filesTotal.toString());
-    setText('currentFile', progress.currentFile || '-');
+    setText('stageName', 'Upload');
+    setText('stageNumber', 'Stage 1 of 7');
+    setText('phase', progress.phase);
+    setText('filesInfo', `${progress.filesUploaded} / ${progress.filesTotal} files`);
   }
 
   /**
-   * Show preprocessing phase (20-25%)
+   * Update from Status API (Phase 2: Processing)
    */
-  showPreprocessing(status: IngestBatchStatusResponse): void {
-    console.log('[ProgressManager] Showing preprocessing phase');
+  updateStatus(status: StatusResponse): void {
+    this.startProgress();
+    this.batchId = status.batch_id;
 
-    setText('status', 'Preprocessing');
-    setText('phase', 'Converting TIFFs and splitting PDFs...');
-    setText('percentage', '22%');
-    setStyle('progressBar', 'width', '22%');
+    const stageName = STAGE_NAMES[status.stage] || status.stage;
+    const stageNumber = STAGE_NUMBERS[status.stage] || 0;
 
-    // Show file count (may have changed due to PDF splits!)
-    setText('filesProcessed', status.files_uploaded.toString());
-    setText('filesTotal', status.file_count.toString());
-    setText('currentFile', 'Processing files on server...');
-  }
-
-  /**
-   * Show enqueued phase (25-28%)
-   */
-  showEnqueued(status: IngestBatchStatusResponse): void {
-    console.log('[ProgressManager] Showing enqueued phase');
-
-    setText('status', 'Enqueued');
-    setText('phase', 'Batch ready for orchestrator...');
-    setText('percentage', '26%');
-    setStyle('progressBar', 'width', '26%');
-
-    // Show final file count after preprocessing
-    setText('filesProcessed', status.files_uploaded.toString());
-    setText('filesTotal', status.files_uploaded.toString());
-    setText('currentFile', 'Ready for processing');
-  }
-
-  /**
-   * Show orchestrator queue waiting phase (28%)
-   */
-  showQueueWaiting(batchId: string): void {
-    console.log('[ProgressManager] Showing orchestrator queue waiting phase for batch:', batchId);
-
-    setText('status', 'Queued for processing');
-    setText('phase', 'Waiting in processing queue...');
-    setText('percentage', '28%');
-    setStyle('progressBar', 'width', '28%');
-
-    // Update file counters to show waiting state
-    setText('filesProcessed', '-');
-    setText('filesTotal', '-');
-    setText('currentFile', 'Batch queued, waiting for processing to begin...');
-  }
-
-  /**
-   * Update progress from orchestrator status
-   */
-  updateOrchestratorProgress(status: OrchestratorStatusResponse): void {
-    const progress = this.calculator.calculateOrchestratorProgress(status);
-
-    setText('status', status.status);
-    setText('phase', progress.description);
-    setText('percentage', `${Math.round(progress.percentage)}%`);
-    setStyle('progressBar', 'width', `${progress.percentage}%`);
-
-    // Update directory counters
-    if (status.progress) {
-      let processed = 0;
-      switch (status.status) {
-        case 'OCR_IN_PROGRESS':
-          processed = status.progress.directories_ocr_complete;
-          break;
-        case 'PINAX_EXTRACTION':
-          processed = status.progress.directories_pinax_complete;
-          break;
-        case 'DESCRIPTION':
-          processed = status.progress.directories_description_complete;
-          break;
-        case 'DONE':
-          processed = status.progress.directories_total;
-          break;
-      }
-
-      setText('filesProcessed', processed.toString());
-      setText('filesTotal', status.progress.directories_total.toString());
-      setText('currentFile', `Processing directories...`);
-    }
+    setText('stageName', stageName);
+    setText('stageNumber', `Stage ${stageNumber} of 7`);
+    setText('phase', status.phase);
+    setText('filesInfo', ''); // Clear file info
 
     // Show root_pi link as soon as available
-    if (status.root_pi && !this.rootPiLinkShown) {
-      this.showRootPiLink(status.root_pi);
+    if (status.results?.root_pi && !this.rootPiLinkShown) {
+      this.showRootPiLink(status.results.root_pi);
       this.rootPiLinkShown = true;
     }
   }
 
-  /**
-   * Show root_pi link (early, while still processing)
-   */
   showRootPiLink(rootPi: string): void {
     const arkeUrl = window.CONFIG.arkeInstituteUrl;
-    const linkHtml = `
-      <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <p class="text-sm text-blue-800 mb-2">Archive is ready to view:</p>
-        <a
-          href="${arkeUrl}/${rootPi}"
-          target="_blank"
-          class="inline-block text-blue-600 hover:text-blue-800 font-medium underline"
-        >
-          ${arkeUrl}/${rootPi} →
-        </a>
-        <p class="text-xs text-blue-600 mt-2">Processing will continue in the background</p>
-      </div>
-    `;
-
     const container = document.getElementById('rootPiLinkContainer');
     if (container) {
-      container.innerHTML = linkHtml;
+      container.innerHTML = `
+        <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+          <p class="text-sm text-blue-800 mb-2">Archive ready to view:</p>
+          <a href="${arkeUrl}/${rootPi}" target="_blank"
+             class="text-blue-600 hover:text-blue-800 font-medium underline">
+            ${arkeUrl}/${rootPi} →
+          </a>
+          <p class="text-xs text-blue-600 mt-2">Processing continues in background</p>
+        </div>
+      `;
       show('rootPiLinkContainer');
     }
   }
 
-  /**
-   * Show final success screen
-   */
-  showSuccess(rootPi: string): void {
+  showSuccess(rootPi: string, batchId?: string): void {
     hide('spinner');
     hide('progressDisplay');
     show('successDisplay');
 
-    const arkeUrl = window.CONFIG.arkeInstituteUrl;
     const viewLink = document.getElementById('viewLink') as HTMLAnchorElement;
     if (viewLink) {
-      viewLink.href = `${arkeUrl}/${rootPi}`;
+      viewLink.href = `${window.CONFIG.arkeInstituteUrl}/${rootPi}`;
     }
+
+    this.addDownloadLogsButton(batchId);
+    this.addStartNewUploadButton();
   }
 
-  /**
-   * Show error with optional root_pi link
-   */
-  showError(error: string, rootPi?: string): void {
-    console.log('[ProgressManager] Showing error:', error, 'rootPi:', rootPi);
+  showError(error: string, rootPi?: string, batchId?: string): void {
     hide('spinner');
     show('errorDisplay');
 
-    // Enhanced error message with formatting
-    const errorHtml = `
-      <p class="text-sm font-medium text-red-800 mb-2">Upload Failed</p>
-      <div class="text-sm text-red-700 bg-red-50 p-3 rounded border border-red-200 mb-4">
-        <pre class="whitespace-pre-wrap font-mono text-xs">${error}</pre>
-      </div>
-      <details class="text-xs text-red-600 mb-4">
-        <summary class="cursor-pointer hover:text-red-800">Show technical details</summary>
-        <div class="mt-2 p-2 bg-red-50 rounded">
-          <p><strong>Time:</strong> ${new Date().toISOString()}</p>
-          <p><strong>Error:</strong> ${error}</p>
+    const errorDisplay = document.getElementById('errorDisplay');
+    if (errorDisplay) {
+      let html = `
+        <p class="font-medium text-red-800 mb-2">Upload Failed</p>
+        <div class="text-sm text-red-700 bg-red-50 p-3 rounded mb-4">
+          ${error}
         </div>
-      </details>
-    `;
+      `;
+
+      if (rootPi) {
+        html += `
+          <div class="mt-4">
+            <p class="text-sm text-red-700 mb-2">Partial results available:</p>
+            <a href="${window.CONFIG.arkeInstituteUrl}/${rootPi}" target="_blank"
+               class="text-red-600 hover:text-red-800 underline">
+              View Archive →
+            </a>
+          </div>
+        `;
+      }
+
+      errorDisplay.innerHTML = html;
+    }
+
+    this.addDownloadLogsButton(batchId);
+    this.addStartNewUploadButton();
+  }
+
+  /**
+   * Show invalid batch error (404 / not found)
+   */
+  showInvalidBatch(batchId: string): void {
+    hide('spinner');
+    show('errorDisplay');
 
     const errorDisplay = document.getElementById('errorDisplay');
     if (errorDisplay) {
-      errorDisplay.innerHTML = errorHtml;
-    }
-
-    if (rootPi) {
-      // Show partial results link
-      const arkeUrl = window.CONFIG.arkeInstituteUrl;
-      const partialLinkHtml = `
-        <div class="mt-4">
-          <p class="text-sm text-red-700 mb-2">Partial results may be available:</p>
-          <a
-            href="${arkeUrl}/${rootPi}"
-            target="_blank"
-            class="inline-block text-red-600 hover:text-red-800 font-medium underline"
-          >
-            View Archive →
-          </a>
+      errorDisplay.innerHTML = `
+        <p class="font-medium text-red-800 mb-2">Batch Not Found</p>
+        <div class="text-sm text-red-700 bg-red-50 p-3 rounded mb-4">
+          Batch ID <code class="font-mono">${batchId}</code> was not found. It may have expired or is invalid.
         </div>
       `;
-      if (errorDisplay) {
-        errorDisplay.innerHTML += partialLinkHtml;
-      }
+    }
+
+    this.addStartNewUploadButton();
+  }
+
+  private addDownloadLogsButton(batchId?: string): void {
+    if (!batchId) return;
+
+    const button = `
+      <div class="mt-4">
+        <button id="downloadLogsBtn" data-batch-id="${batchId}"
+                class="text-sm text-gray-600 hover:text-gray-800 underline">
+          Download Technical Logs
+        </button>
+      </div>
+    `;
+
+    const successDisplay = document.getElementById('successDisplay');
+    const errorDisplay = document.getElementById('errorDisplay');
+
+    if (successDisplay && !successDisplay.querySelector('#downloadLogsBtn')) {
+      successDisplay.innerHTML += button;
+    } else if (errorDisplay && !errorDisplay.querySelector('#downloadLogsBtn')) {
+      errorDisplay.innerHTML += button;
+    }
+  }
+
+  private addStartNewUploadButton(): void {
+    const button = `
+      <div class="mt-6">
+        <button id="startNewUploadBtn"
+                class="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
+          Start New Upload
+        </button>
+      </div>
+    `;
+
+    const successDisplay = document.getElementById('successDisplay');
+    const errorDisplay = document.getElementById('errorDisplay');
+
+    if (successDisplay && !successDisplay.querySelector('#startNewUploadBtn')) {
+      successDisplay.innerHTML += button;
+    } else if (errorDisplay && !errorDisplay.querySelector('#startNewUploadBtn')) {
+      errorDisplay.innerHTML += button;
     }
   }
 }

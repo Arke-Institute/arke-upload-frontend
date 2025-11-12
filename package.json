@@ -11,7 +11,8 @@
     "dev": "npm run build && wrangler dev",
     "dev:watch": "concurrently \"npm run watch:client\" \"wrangler dev\"",
     "deploy": "npm run build && wrangler deploy",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "test:monitor": "tsx test/upload-monitor.ts"
   },
   "keywords": [
     "cloudflare",
@@ -23,10 +24,12 @@
   "license": "MIT",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/node": "^22.10.1",
     "concurrently": "^9.1.0",
     "esbuild": "^0.24.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "wrangler": "^3.84.1"
+    "wrangler": "^4.47.0"
   },
   "dependencies": {
     "@arke/upload-client": "github:Arke-Institute/upload-client"

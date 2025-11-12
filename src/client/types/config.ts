@@ -4,6 +4,7 @@
 export interface ClientConfig {
   ingestWorkerUrl: string;
   arkeInstituteUrl: string;
+  statusApiUrl: string;
 }
 
 declare global {

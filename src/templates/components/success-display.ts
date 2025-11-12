@@ -20,14 +20,7 @@ export function renderSuccessDisplay(): string {
           class="inline-block bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200"
         >
           View Archive →
-        </a>
-
-        <button
-          onclick="location.reload()"
-          class="block w-full mt-4 text-sm text-gray-600 hover:text-gray-900 transition"
-        >
-          Upload Another Directory
-        </button>
+        </a>      
       </div>
     </div>
   `;

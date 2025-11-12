@@ -32,3 +32,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+
+# Test data
+drexel_1/
+test/logs/

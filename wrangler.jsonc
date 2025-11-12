@@ -5,24 +5,19 @@
   "compatibility_date": "2024-11-01",
   "compatibility_flags": ["nodejs_compat"],
 
-  // Worker settings
   "workers_dev": true,
 
-  // Environment variables (optional)
+  // Environment variables
   "vars": {
-    "INGEST_WORKER_URL": "https://ingest.arke.institute",
+    "UPLOAD_API_URL": "https://ingest.arke.institute",
     "ARKE_INSTITUTE_URL": "https://arke.institute"
   },
 
   // Service bindings
   "services": [
     {
-      "binding": "ORCHESTRATOR",
-      "service": "arke-orchestrator"
-    },
-    {
-      "binding": "INGEST",
-      "service": "arke-ingest-worker"
+      "binding": "STATUS",
+      "service": "arke-ingest-status"
     }
   ],
 
@@ -31,5 +26,14 @@
       "pattern": "upload.arke.institute",
       "custom_domain": true
     }
-  ]
+  ],
+  
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    }
+  }
 }

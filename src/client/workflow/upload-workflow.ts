@@ -1,10 +1,13 @@
 /**
- * Main Upload Workflow Orchestrator
+ * Main Upload Workflow
+ *
+ * Phase 1: Upload files via SDK → get batchId
+ * Phase 2: Poll status API until complete → show results
  */
 import { UploadPhase, type UploadConfig } from './upload-phase';
-import { IngestPhase } from './ingest-phase';
-import { OrchestratorPhase } from './orchestrator-phase';
+import { StatusClient } from '../api/status-client';
 import { ProgressManager } from '../ui/progress-manager';
+import { urlState } from '../state/url-state';
 
 export interface WorkflowConfig {
   uploader: string;
@@ -17,13 +20,13 @@ export class UploadWorkflow {
   private progressManager = new ProgressManager();
 
   async start(config: WorkflowConfig, files: FileList): Promise<void> {
-    console.log('[UploadWorkflow] Starting upload workflow');
+    console.log('[UploadWorkflow] Starting workflow');
     console.log('[UploadWorkflow] Config:', config);
     console.log('[UploadWorkflow] Files:', files.length);
 
     try {
-      // Phase 1: Upload via SDK (0-25%)
-      console.log('[UploadWorkflow] Starting Phase 1: Upload via SDK');
+      // Phase 1: Upload via SDK
+      console.log('[UploadWorkflow] Phase 1: Upload via SDK');
       const uploadPhase = new UploadPhase();
 
       const uploadConfig: UploadConfig = {
@@ -35,53 +38,66 @@ export class UploadWorkflow {
       };
 
       const { batchId } = await uploadPhase.execute(uploadConfig, files, this.progressManager);
-      console.log('[UploadWorkflow] Phase 1 complete. BatchId:', batchId);
+      console.log('[UploadWorkflow] Upload complete. BatchId:', batchId);
 
-      // Phase 2: Wait for preprocessing and enqueue (20-28%)
-      console.log('[UploadWorkflow] Starting Phase 2: Ingest/Preprocessing');
-      const ingestPhase = new IngestPhase(batchId);
-      await ingestPhase.execute(this.progressManager);
-      console.log('[UploadWorkflow] Phase 2 complete. Batch enqueued.');
+      // Update URL with batch ID for shareability
+      urlState.setBatchId(batchId);
 
-      // Phase 3: Poll orchestrator for processing (28-100%)
-      console.log('[UploadWorkflow] Starting Phase 3: Orchestrator');
-      const orchestratorPhase = new OrchestratorPhase(batchId);
-      const { rootPi } = await orchestratorPhase.execute(this.progressManager);
-      console.log('[UploadWorkflow] Phase 3 complete. RootPi:', rootPi);
-
-      // Show final success
-      console.log('[UploadWorkflow] Showing success screen');
-      this.progressManager.showSuccess(rootPi);
+      // Phase 2: Monitor via Status API
+      await this.monitorBatch(batchId);
     } catch (error) {
-      console.error('[UploadWorkflow] ERROR:', error);
-      console.error('[UploadWorkflow] Error stack:', error instanceof Error ? error.stack : 'No stack');
-
-      // Try to recover root_pi if possible
-      let rootPi: string | undefined;
-      let batchId: string | undefined;
-
-      // Check if error has batchId property
-      if ((error as any).batchId && typeof (error as any).batchId === 'string') {
-        batchId = (error as any).batchId;
-      }
-
-      if (batchId && batchId.length > 0) {
-        console.log('[UploadWorkflow] Attempting to recover root_pi for batchId:', batchId);
-        try {
-          const orchClient = new (await import('../api/orchestrator-client')).OrchestratorClient(batchId);
-          const status = await orchClient.getStatus();
-          rootPi = status.root_pi;
-          console.log('[UploadWorkflow] Recovered root_pi:', rootPi);
-        } catch (recoveryError) {
-          console.warn('[UploadWorkflow] Could not recover root_pi:', recoveryError instanceof Error ? recoveryError.message : recoveryError);
-        }
-      } else {
-        console.log('[UploadWorkflow] No valid batchId available, skipping root_pi recovery');
-      }
-
+      console.error('[UploadWorkflow] Error:', error);
       this.progressManager.showError(
-        error instanceof Error ? error.message : 'An unknown error occurred',
-        rootPi
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    }
+  }
+
+  /**
+   * Resume monitoring from existing batch ID (for page reload / shared links)
+   */
+  async resumeFromBatchId(batchId: string): Promise<void> {
+    console.log('[UploadWorkflow] Resuming from batch ID:', batchId);
+
+    try {
+      this.progressManager.showResuming(batchId);
+      await this.monitorBatch(batchId);
+    } catch (error) {
+      console.error('[UploadWorkflow] Error resuming:', error);
+
+      // Check if it's a 404 (batch not found)
+      if (error instanceof Error && error.message.includes('404')) {
+        this.progressManager.showInvalidBatch(batchId);
+      } else {
+        this.progressManager.showError(
+          error instanceof Error ? error.message : 'Unknown error'
+        );
+      }
+    }
+  }
+
+  /**
+   * Monitor batch status (shared by both start and resume)
+   */
+  private async monitorBatch(batchId: string): Promise<void> {
+    console.log('[UploadWorkflow] Phase 2: Monitor status');
+    const statusClient = new StatusClient(batchId, window.CONFIG.statusApiUrl);
+
+    const finalStatus = await statusClient.pollUntilComplete((status) => {
+      console.log('[UploadWorkflow] Status update:', status.stage, status.phase);
+      this.progressManager.updateStatus(status);
+    });
+
+    console.log('[UploadWorkflow] Processing complete:', finalStatus.stage);
+
+    // Show result
+    if (finalStatus.stage === 'completed' && finalStatus.results?.root_pi) {
+      this.progressManager.showSuccess(finalStatus.results.root_pi, batchId);
+    } else if (finalStatus.stage === 'error') {
+      this.progressManager.showError(
+        finalStatus.error || 'Processing failed',
+        finalStatus.results?.root_pi,
+        batchId
       );
     }
   }
