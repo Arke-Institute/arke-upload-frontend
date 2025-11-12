@@ -5,6 +5,7 @@ import { styles } from '../styles/styles';
 import { renderUploadForm } from './components/upload-form';
 import { renderProgressDisplay } from './components/progress-display';
 import { renderSuccessDisplay } from './components/success-display';
+import { renderErrorDisplay } from './components/error-display';
 import type { Env } from '../types/env';
 import { sdkBundle, clientBundle } from '../client-bundle';
 
@@ -30,6 +31,7 @@ export function renderLayout(env: Env): string {
     ${renderUploadForm()}
     ${renderProgressDisplay()}
     ${renderSuccessDisplay()}
+    ${renderErrorDisplay()}
   </div>
 
   <!-- Configuration -->
