@@ -19,6 +19,9 @@ export function renderProgressDisplay(): string {
         <div id="filesInfo" class="text-xs text-gray-500 mt-2"></div>
       </div>
 
+      <!-- Retry Warning Container (shown during retries) -->
+      <div id="retryWarningContainer" class="hidden"></div>
+
       <!-- Root PI Link Container (shown when available) -->
       <div id="rootPiLinkContainer" class="hidden"></div>
     </div>

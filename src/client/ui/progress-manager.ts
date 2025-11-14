@@ -73,6 +73,38 @@ export class ProgressManager {
     setText('stageNumber', 'Stage 1 of 7');
     setText('phase', progress.phase);
     setText('filesInfo', `${progress.filesUploaded} / ${progress.filesTotal} files`);
+
+    // Clear any retry warnings when progress continues
+    this.clearRetryWarning();
+  }
+
+  /**
+   * Show retry warning (temporary issue, not failure)
+   */
+  showRetryWarning(message: string): void {
+    const container = document.getElementById('retryWarningContainer');
+    if (container) {
+      container.innerHTML = `
+        <div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+          <p class="text-sm text-yellow-800">
+            <span class="font-medium">⚠️ Temporary issue:</span> ${message}
+          </p>
+          <p class="text-xs text-yellow-600 mt-1">Retrying automatically...</p>
+        </div>
+      `;
+      show('retryWarningContainer');
+    }
+  }
+
+  /**
+   * Clear retry warning
+   */
+  clearRetryWarning(): void {
+    const container = document.getElementById('retryWarningContainer');
+    if (container) {
+      container.innerHTML = '';
+      hide('retryWarningContainer');
+    }
   }
 
   /**
